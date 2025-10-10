@@ -38,6 +38,12 @@ AI_farah/test_results.json
 *.xls
 *.pkl
 
+# Exceptions importantes - autoriser ces fichiers JSON
+!composer.json
+!package.json
+!package-lock.json
+!tsconfig.json
+
 # Cache Python
 __pycache__/
 *.pyc
