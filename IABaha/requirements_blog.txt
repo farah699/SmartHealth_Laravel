@@ -1,0 +1,7 @@
+# Dépendances pour le système de recommandation SmartHealth
+
+# Connecteur MySQL pour Python
+mysql-connector-python==8.2.0
+
+# Alternative: PyMySQL (décommentez si vous préférez)
+# PyMySQL==1.1.0

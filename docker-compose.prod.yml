@@ -1,0 +1,132 @@
+services:
+  app:
+    image: ${DOCKERHUB_USERNAME}/smarthealth-app:latest
+    container_name: smarthealth-app-prod
+    restart: unless-stopped
+    working_dir: /var/www
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - DB_HOST=database
+      - REDIS_HOST=redis
+    volumes:
+      - app-storage:/var/www/storage
+    networks:
+      - smarthealth-network
+    depends_on:
+      - database
+      - redis
+
+  webserver:
+    image: nginx:alpine
+    container_name: smarthealth-webserver-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./docker/nginx/ssl:/etc/nginx/ssl
+      - app-storage:/var/www/storage
+    networks:
+      - smarthealth-network
+    depends_on:
+      - app
+
+  database:
+    image: mysql:8.0
+    container_name: smarthealth-database-prod
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      SERVICE_NAME: mysql
+    volumes:
+      - smarthealth-db-data:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - smarthealth-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: smarthealth-redis-prod
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - smarthealth-redis-data:/data
+    networks:
+      - smarthealth-network
+
+  yoga-ai:
+    image: ${DOCKERHUB_USERNAME}/smarthealth-yoga-ai:latest
+    container_name: smarthealth-yoga-ai-prod
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DB_HOST=database
+    networks:
+      - smarthealth-network
+    depends_on:
+      - database
+
+  exercise-ai:
+    image: ${DOCKERHUB_USERNAME}/smarthealth-exercise-ai:latest
+    container_name: smarthealth-exercise-ai-prod
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=production
+      - DB_HOST=database
+    networks:
+      - smarthealth-network
+    depends_on:
+      - database
+
+  food-ai:
+    image: ${DOCKERHUB_USERNAME}/smarthealth-food-ai:latest
+    container_name: smarthealth-food-ai-prod
+    restart: unless-stopped
+    ports:
+      - "5100:5100"
+    environment:
+      - FLASK_ENV=production
+      - DB_HOST=database
+    networks:
+      - smarthealth-network
+    depends_on:
+      - database
+
+  blog-ai:
+    image: ${DOCKERHUB_USERNAME}/smarthealth-blog-ai:latest
+    container_name: smarthealth-blog-ai-prod
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=production
+      - DB_HOST=database
+    networks:
+      - smarthealth-network
+    depends_on:
+      - database
+
+volumes:
+  smarthealth-db-data:
+    driver: local
+  smarthealth-redis-data:
+    driver: local
+  app-storage:
+    driver: local
+
+networks:
+  smarthealth-network:
+    driver: bridge

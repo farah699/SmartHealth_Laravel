@@ -1,0 +1,191 @@
+name: SmartHealth CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: smarthealth
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+jobs:
+  # Job 1: Tests et Quality Code
+  test-and-quality:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_password
+          MYSQL_DATABASE: SmartHealth_test
+          MYSQL_USER: smarthealth
+          MYSQL_PASSWORD: smarthealth_password
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Nécessaire pour SonarQube
+
+    - name: 🐘 Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        extensions: pdo_mysql, mbstring, exif, pcntl, bcmath, gd, zip, redis
+        coverage: xdebug
+
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: 📦 Cache Composer dependencies
+      uses: actions/cache@v3
+      with:
+        path: vendor
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    - name: 🔧 Install Composer dependencies
+      run: composer install --prefer-dist --no-progress --no-suggest
+
+    - name: 📦 Install NPM dependencies
+      run: npm ci
+
+    - name: 📄 Copy environment file
+      run: cp .env.example .env
+
+    - name: 🔑 Generate application key
+      run: php artisan key:generate
+
+    - name: 📁 Create storage directories
+      run: |
+        mkdir -p storage/framework/cache/data
+        mkdir -p storage/framework/sessions
+        mkdir -p storage/framework/views
+        mkdir -p storage/logs
+        mkdir -p bootstrap/cache
+        chmod -R 777 storage bootstrap/cache
+
+    - name: 🎨 Build frontend assets
+      run: npm run production
+
+    - name: 🗄️ Run database migrations
+      run: php artisan migrate --force
+      env:
+        DB_CONNECTION: mysql
+        DB_HOST: 127.0.0.1
+        DB_PORT: 3306
+        DB_DATABASE: SmartHealth_test
+        DB_USERNAME: smarthealth
+        DB_PASSWORD: smarthealth_password
+
+    - name: 🌱 Seed database
+      run: php artisan db:seed --force
+
+    - name: 🧪 Run PHPUnit tests
+      run: php artisan test --coverage-clover=coverage.xml
+
+    - name: 📊 SonarQube Scan
+      uses: sonarqube-quality-gate-action@master
+      with:
+        scanMetadataReportFile: coverage.xml
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    - name: 📈 Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+
+  # Job 2: Build et Push Docker Images
+  build-and-push:
+    needs: test-and-quality
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    strategy:
+      matrix:
+        include:
+          - service: app
+            dockerfile: Dockerfile
+            context: .
+          - service: yoga-ai
+            dockerfile: Dockerfile
+            context: AI
+          - service: exercise-ai
+            dockerfile: Dockerfile
+            context: AI_farah
+          - service: food-ai
+            dockerfile: Dockerfile
+            context: AIsalma
+          - service: blog-ai
+            dockerfile: Dockerfile
+            context: IABaha
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔐 Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: 🏗️ Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 📝 Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: 🚀 Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.context }}
+        file: ${{ matrix.context }}/${{ matrix.dockerfile }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Job 3: Deploy (optionnel)
+  deploy:
+    needs: [test-and-quality, build-and-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🚀 Deploy notification
+      run: |
+        echo "✅ SmartHealth Pipeline completed successfully!"
+        echo "🐳 Docker images pushed to Docker Hub"
+        echo "📊 Code quality checked with SonarQube"
+        echo "🧪 All tests passed"

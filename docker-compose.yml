@@ -1,0 +1,232 @@
+services:
+  # Service de l'application Laravel
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        user: smarthealth
+        uid: 1000
+    image: smarthealth-app
+    container_name: smarthealth-app
+    restart: unless-stopped
+    working_dir: /var/www
+    environment:
+      - VOICERSS_API_KEY=fdd187cbc760494bafcab7ef225e9fce
+      - RESPONSIVEVOICE_ENABLED=true
+      - RECOMMENDATION_API_URL=http://blog-ai:5002
+    volumes:
+      - ./:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - smarthealth-network
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      blog-ai:
+        condition: service_started
+
+  # Service Nginx
+  webserver:
+    image: nginx:alpine
+    container_name: smarthealth-webserver
+    restart: unless-stopped
+    ports:
+      - "81:80"
+      - "443:443"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./docker/nginx/ssl:/etc/nginx/ssl
+    networks:
+      - smarthealth-network
+    depends_on:
+      - app
+
+  # Service MySQL
+  database:
+    image: mysql:8.0
+    container_name: smarthealth-database
+    restart: unless-stopped
+    ports:
+      - "3308:3306"
+    environment:
+      MYSQL_DATABASE: SmartHealth
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_USER: smarthealth
+      MYSQL_PASSWORD: smarthealth_password
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    volumes:
+      - smarthealth-db-data:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/my.cnf
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - smarthealth-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # Service Redis
+  redis:
+    image: redis:7-alpine
+    container_name: smarthealth-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - smarthealth-redis-data:/data
+    networks:
+      - smarthealth-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Service phpMyAdmin
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: smarthealth-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: database
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root_password
+    networks:
+      - smarthealth-network
+    depends_on:
+      database:
+        condition: service_healthy
+
+  # Service API Python IA - Yoga
+  yoga-ai:
+    build:
+      context: ./AI
+      dockerfile: Dockerfile
+    container_name: smarthealth-yoga-ai
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_HOST=database
+      - DB_PORT=3306
+      - DB_USER=smarthealth
+      - DB_PASSWORD=smarthealth_password
+      - DB_NAME=SmartHealth
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+    volumes:
+      - ./AI:/app
+    networks:
+      - smarthealth-network
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service API Python IA - Exercise Recommendation
+  exercise-ai:
+    build:
+      context: ./AI_farah
+      dockerfile: Dockerfile
+    container_name: smarthealth-exercise-ai
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - DB_HOST=database
+      - DB_PORT=3306
+      - DB_USER=smarthealth
+      - DB_PASSWORD=smarthealth_password
+      - DB_NAME=SmartHealth
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+    volumes:
+      - ./AI_farah:/app
+    networks:
+      - smarthealth-network
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service API Python IA - Food Recognition
+  food-ai:
+    build:
+      context: ./AIsalma
+      dockerfile: Dockerfile
+    container_name: smarthealth-food-ai
+    restart: unless-stopped
+    ports:
+      - "5100:5100"
+    environment:
+      - DB_HOST=database
+      - DB_PORT=3306
+      - DB_USER=smarthealth
+      - DB_PASSWORD=smarthealth_password
+      - DB_NAME=SmartHealth
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+    volumes:
+      - ./AIsalma:/app
+    networks:
+      - smarthealth-network
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Service API Python IA - Blog Recommender
+  blog-ai:
+    build:
+      context: ./IABaha
+      dockerfile: Dockerfile
+    container_name: smarthealth-blog-ai
+    restart: unless-stopped
+    ports:
+      - "5002:5002"
+    environment:
+      - DB_HOST=database
+      - DB_PORT=3306
+      - DB_USER=smarthealth
+      - DB_PASSWORD=smarthealth_password
+      - DB_NAME=SmartHealth
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+    volumes:
+      - ./IABaha:/app
+    networks:
+      - smarthealth-network
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  smarthealth-db-data:
+    driver: local
+  smarthealth-redis-data:
+    driver: local
+
+networks:
+  smarthealth-network:
+    driver: bridge
