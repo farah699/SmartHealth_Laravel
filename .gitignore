@@ -33,7 +33,7 @@ AI_farah/test_results.json
 
 # Fichiers de données généraux
 *.csv
-*.json
+# *.json 
 *.xlsx
 *.xls
 *.pkl
