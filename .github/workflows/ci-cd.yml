@@ -12,7 +12,7 @@ env:
 
 jobs:
   # Job 1: Tests Laravel
-  test-and-quality:
+  test:
     runs-on: ubuntu-latest
     
     services:
@@ -21,30 +21,19 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root_password
           MYSQL_DATABASE: SmartHealth_test
-          MYSQL_USER: smarthealth
-          MYSQL_PASSWORD: smarthealth_password
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-      
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
     - name: 📥 Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
     - name: 🐘 Setup PHP
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.2'
-        extensions: pdo_mysql, mbstring, exif, pcntl, bcmath, gd, zip, redis
-        coverage: xdebug
+        extensions: pdo_mysql, mbstring, exif, pcntl, bcmath, gd, zip
 
     - name: 🟢 Setup Node.js
       uses: actions/setup-node@v4
@@ -52,14 +41,7 @@ jobs:
         node-version: '18'
         cache: 'npm'
 
-    - name: 📦 Cache Composer dependencies
-      uses: actions/cache@v3
-      with:
-        path: vendor
-        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-        restore-keys: ${{ runner.os }}-composer-
-
-    - name: 🔧 Install Composer dependencies
+    - name: 📦 Install Composer dependencies
       run: composer install --prefer-dist --no-progress --no-interaction
 
     - name: 📦 Install NPM dependencies
@@ -84,84 +66,86 @@ jobs:
         DB_HOST: 127.0.0.1
         DB_PORT: 3306
         DB_DATABASE: SmartHealth_test
-        DB_USERNAME: smarthealth
-        DB_PASSWORD: smarthealth_password
-
-    - name: 🌱 Seed database (if seeders exist)
-      run: php artisan db:seed --force || echo "No seeders found, skipping..."
-      env:
-        DB_CONNECTION: mysql
-        DB_HOST: 127.0.0.1
-        DB_PORT: 3306
-        DB_DATABASE: SmartHealth_test
-        DB_USERNAME: smarthealth
-        DB_PASSWORD: smarthealth_password
+        DB_USERNAME: root
+        DB_PASSWORD: root_password
 
     - name: 🧪 Run PHPUnit tests
-      run: php artisan test --coverage-clover=coverage.xml
+      run: php artisan test
       env:
         DB_CONNECTION: mysql
         DB_HOST: 127.0.0.1
         DB_PORT: 3306
         DB_DATABASE: SmartHealth_test
-        DB_USERNAME: smarthealth
-        DB_PASSWORD: smarthealth_password
+        DB_USERNAME: root
+        DB_PASSWORD: root_password
 
-    - name: 📊 Install SonarQube Scanner
-      run: |
-        wget -O sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
-        unzip sonar-scanner.zip
-        sudo mv sonar-scanner-4.8.0.2856-linux /opt/sonar-scanner
-        sudo ln -s /opt/sonar-scanner/bin/sonar-scanner /usr/local/bin/sonar-scanner
-
-    - name: 📊 Run SonarQube Analysis
-      run: |
-        sonar-scanner \
-          -Dsonar.projectKey=farah699_SmartHealth_Laravel \
-          -Dsonar.organization=farah699 \
-          -Dsonar.host.url=https://sonarcloud.io \
-          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-          -Dsonar.sources=app,config,database,resources,routes \
-          -Dsonar.tests=tests \
-          -Dsonar.php.coverage.reportPaths=coverage.xml \
-          -Dsonar.exclusions=vendor/**,node_modules/**,public/**,storage/**,bootstrap/cache/**
-      if: env.SONAR_TOKEN != ''
+    - name: 📊 Generate test coverage (optional)
+      run: php artisan test --coverage-clover=coverage.xml || echo "Coverage generation failed, continuing..."
       env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DB_CONNECTION: mysql
+        DB_HOST: 127.0.0.1
+        DB_PORT: 3306
+        DB_DATABASE: SmartHealth_test
+        DB_USERNAME: root
+        DB_PASSWORD: root_password
 
-    - name: 📈 Upload test results
-      uses: actions/upload-artifact@v3
+    - name: 📈 Upload test artifacts
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results
         path: |
           coverage.xml
-          tests/results.xml
+          storage/logs/
+        retention-days: 7
 
-  # Job 2: Build et Push Docker Images
-  build-and-push:
-    needs: test-and-quality
+  # Job 2: Build Docker App principale
+  build-app:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: 🔐 Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: 🏗️ Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: 🚀 Build and push Laravel app
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/smarthealth-app:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/smarthealth-app:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Job 3: Build AI Services
+  build-ai-services:
+    needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
     strategy:
       matrix:
         include:
-          - service: app
-            dockerfile: Dockerfile
-            context: .
           - service: yoga-ai
-            dockerfile: Dockerfile
             context: AI
           - service: exercise-ai
-            dockerfile: Dockerfile
             context: AI_farah
           - service: food-ai
-            dockerfile: Dockerfile
             context: AIsalma
           - service: blog-ai
-            dockerfile: Dockerfile
             context: IABaha
 
     steps:
@@ -177,53 +161,74 @@ jobs:
     - name: 🏗️ Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: 📝 Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
-
-    - name: 🚀 Build and push Docker image
+    - name: 🚀 Build and push ${{ matrix.service }}
       uses: docker/build-push-action@v5
       with:
         context: ${{ matrix.context }}
-        file: ${{ matrix.context }}/${{ matrix.dockerfile }}
+        file: ${{ matrix.context }}/Dockerfile
         push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        tags: |
+          ${{ secrets.DOCKERHUB_USERNAME }}/smarthealth-${{ matrix.service }}:latest
+          ${{ secrets.DOCKERHUB_USERNAME }}/smarthealth-${{ matrix.service }}:${{ github.sha }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-      continue-on-error: true
 
-  # Job 3: Deploy notification
+  # Job 4: SonarQube Analysis (optionnel)
+  sonarqube:
+    needs: test
+    runs-on: ubuntu-latest
+    if: env.SONAR_TOKEN != ''
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: 📊 Run SonarQube Analysis
+      run: |
+        # Installation de SonarQube Scanner
+        wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
+        unzip -q sonar-scanner-cli-4.8.0.2856-linux.zip
+        export PATH=$PATH:$(pwd)/sonar-scanner-4.8.0.2856-linux/bin
+        
+        # Analyse SonarQube
+        sonar-scanner \
+          -Dsonar.projectKey=farah699_SmartHealth_Laravel \
+          -Dsonar.organization=farah699 \
+          -Dsonar.host.url=https://sonarcloud.io \
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
+          -Dsonar.sources=app,config,database,resources,routes \
+          -Dsonar.tests=tests \
+          -Dsonar.exclusions=vendor/**,node_modules/**,public/**,storage/**,bootstrap/cache/**,AI/**,AI_farah/**,AIsalma/**,IABaha/**
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 5: Deployment notification
   deploy:
-    needs: [test-and-quality, build-and-push]
+    needs: [test, build-app, build-ai-services]
     runs-on: ubuntu-latest
     if: always() && github.ref == 'refs/heads/main'
     
     steps:
-    - name: 🚀 Pipeline Status Summary
+    - name: 🎯 Pipeline Summary
       run: |
-        echo "🎯 SmartHealth Pipeline Execution Summary"
-        echo "========================================="
-        echo "✅ Tests completed: ${{ needs.test-and-quality.result }}"
-        echo "🐳 Docker build: ${{ needs.build-and-push.result }}"
-        echo "📊 SonarQube: Executed (check SonarCloud for results)"
-        echo "🎉 Pipeline finished!"
+        echo "🚀 SmartHealth CI/CD Pipeline Results"
+        echo "====================================="
+        echo "✅ Tests: ${{ needs.test.result }}"
+        echo "🐳 App Build: ${{ needs.build-app.result }}"
+        echo "🤖 AI Services: ${{ needs.build-ai-services.result }}"
+        echo ""
         
-        if [ "${{ needs.test-and-quality.result }}" == "success" ]; then
-          echo "🟢 All tests passed successfully!"
+        if [ "${{ needs.test.result }}" == "success" ] && [ "${{ needs.build-app.result }}" == "success" ]; then
+          echo "🎉 Pipeline completed successfully!"
+          echo "📦 Images available on Docker Hub:"
+          echo "   - farahhmida/smarthealth-app:latest"
+          echo "   - farahhmida/smarthealth-yoga-ai:latest"
+          echo "   - farahhmida/smarthealth-exercise-ai:latest"
+          echo "   - farahhmida/smarthealth-food-ai:latest"
+          echo "   - farahhmida/smarthealth-blog-ai:latest"
         else
-          echo "🔴 Some tests failed. Check the test-and-quality job for details."
-        fi
-        
-        if [ "${{ needs.build-and-push.result }}" == "success" ]; then
-          echo "🐳 Docker images built and pushed successfully!"
-        else
-          echo "⚠️ Docker build had issues. Check the build-and-push job for details."
+          echo "❌ Pipeline had some failures. Check the logs above."
         fi
