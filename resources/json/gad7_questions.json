@@ -1,0 +1,72 @@
+[
+    {
+        "id": 1,
+        "question": "Se sentir nerveux, anxieux ou à cran",
+        "options": [
+            {"value": 0, "label": "Pas du tout"},
+            {"value": 1, "label": "Plusieurs jours"},
+            {"value": 2, "label": "Plus de la moitié des jours"},
+            {"value": 3, "label": "Presque tous les jours"}
+        ]
+    },
+    {
+        "id": 2,
+        "question": "Ne pas être capable d’arrêter de s’inquiéter ou de contrôler ses inquiétudes",
+        "options": [
+            {"value": 0, "label": "Pas du tout"},
+            {"value": 1, "label": "Plusieurs jours"},
+            {"value": 2, "label": "Plus de la moitié des jours"},
+            {"value": 3, "label": "Presque tous les jours"}
+        ]
+    },
+    {
+        "id": 3,
+        "question": "S’inquiéter trop à propos de différentes choses",
+        "options": [
+            {"value": 0, "label": "Pas du tout"},
+            {"value": 1, "label": "Plusieurs jours"},
+            {"value": 2, "label": "Plus de la moitié des jours"},
+            {"value": 3, "label": "Presque tous les jours"}
+        ]
+    },
+    {
+        "id": 4,
+        "question": "Difficulté à se détendre",
+        "options": [
+            {"value": 0, "label": "Pas du tout"},
+            {"value": 1, "label": "Plusieurs jours"},
+            {"value": 2, "label": "Plus de la moitié des jours"},
+            {"value": 3, "label": "Presque tous les jours"}
+        ]
+    },
+    {
+        "id": 5,
+        "question": "Être si agité qu’il est difficile de rester assis tranquille",
+        "options": [
+            {"value": 0, "label": "Pas du tout"},
+            {"value": 1, "label": "Plusieurs jours"},
+            {"value": 2, "label": "Plus de la moitié des jours"},
+            {"value": 3, "label": "Presque tous les jours"}
+        ]
+    },
+    {
+        "id": 6,
+        "question": "Devenir facilement contrarié ou irritable",
+        "options": [
+            {"value": 0, "label": "Pas du tout"},
+            {"value": 1, "label": "Plusieurs jours"},
+            {"value": 2, "label": "Plus de la moitié des jours"},
+            {"value": 3, "label": "Presque tous les jours"}
+        ]
+    },
+    {
+        "id": 7,
+        "question": "Avoir peur comme si quelque chose d’affreux pourrait arriver",
+        "options": [
+            {"value": 0, "label": "Pas du tout"},
+            {"value": 1, "label": "Plusieurs jours"},
+            {"value": 2, "label": "Plus de la moitié des jours"},
+            {"value": 3, "label": "Presque tous les jours"}
+        ]
+    }
+]
