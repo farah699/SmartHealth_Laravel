@@ -51,19 +51,10 @@ RUN mkdir -p /home/$user/.composer && \
 # Configuration du répertoire de travail
 WORKDIR /var/www
 
-# Copie des fichiers de dépendances
-COPY composer.json composer.lock package.json package-lock.json webpack.mix.js ./
-
-# Installation des dépendances PHP
-RUN composer install --no-dev --optimize-autoloader --no-interaction
-
-# Installation des dépendances Node.js
-RUN npm ci --only=production
-
-# Copie du code source
+# ✅ CORRECTION : Copier TOUT le code source AVANT les installations
 COPY . .
 
-# Créer les dossiers manquants
+# ✅ Créer les dossiers manquants AVANT les installations
 RUN mkdir -p resources/assets/images \
     && mkdir -p resources/assets/scss \
     && mkdir -p resources/assets/js \
@@ -80,6 +71,12 @@ RUN mkdir -p resources/assets/images \
 RUN touch resources/assets/scss/app.scss || true
 RUN touch resources/assets/scss/bootstrap.scss || true
 RUN touch resources/assets/scss/icons.scss || true
+
+# ✅ MAINTENANT installer les dépendances PHP avec le code source complet
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Installation des dépendances Node.js
+RUN npm ci --only=production
 
 # Build des assets pour production
 RUN npm run production
