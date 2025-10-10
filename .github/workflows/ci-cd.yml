@@ -9,7 +9,6 @@ on:
 env:
   REGISTRY: docker.io
   IMAGE_NAME: smarthealth
-  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
 jobs:
   # Job 1: Tests et Quality Code
@@ -96,16 +95,35 @@ jobs:
 
     - name: 🌱 Seed database
       run: php artisan db:seed --force
+      env:
+        DB_CONNECTION: mysql
+        DB_HOST: 127.0.0.1
+        DB_PORT: 3306
+        DB_DATABASE: SmartHealth_test
+        DB_USERNAME: smarthealth
+        DB_PASSWORD: smarthealth_password
 
     - name: 🧪 Run PHPUnit tests
       run: php artisan test --coverage-clover=coverage.xml
+      env:
+        DB_CONNECTION: mysql
+        DB_HOST: 127.0.0.1
+        DB_PORT: 3306
+        DB_DATABASE: SmartHealth_test
+        DB_USERNAME: smarthealth
+        DB_PASSWORD: smarthealth_password
 
     - name: 📊 SonarQube Scan
-      uses: sonarqube-quality-gate-action@master
-      with:
-        scanMetadataReportFile: coverage.xml
+      uses: sonarqube/sonarqube-scan-action@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    - name: 📊 SonarQube Quality Gate check
+      id: sonarqube-quality-gate-check
+      uses: sonarqube/sonarqube-quality-gate-action@master
+      timeout-minutes: 5
+      env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     - name: 📈 Upload coverage to Codecov
@@ -173,19 +191,17 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-  # Job 3: Deploy (optionnel)
+  # Job 3: Deploy notification
   deploy:
     needs: [test-and-quality, build-and-push]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
     steps:
-    - name: 📥 Checkout code
-      uses: actions/checkout@v4
-
     - name: 🚀 Deploy notification
       run: |
         echo "✅ SmartHealth Pipeline completed successfully!"
         echo "🐳 Docker images pushed to Docker Hub"
-        echo "📊 Code quality checked with SonarQube"
+        echo "📊 Code quality checked with SonarQube" 
         echo "🧪 All tests passed"
+        echo "🎉 Ready for deployment!"
