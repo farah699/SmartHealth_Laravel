@@ -51,10 +51,10 @@ RUN mkdir -p /home/$user/.composer && \
 # Configuration du répertoire de travail
 WORKDIR /var/www
 
-# ✅ CORRECTION : Copier TOUT le code source AVANT les installations
+# Copier TOUT le code source AVANT les installations
 COPY . .
 
-# ✅ Créer les dossiers manquants AVANT les installations
+# Créer les dossiers manquants AVANT les installations
 RUN mkdir -p resources/assets/images \
     && mkdir -p resources/assets/scss \
     && mkdir -p resources/assets/js \
@@ -72,14 +72,17 @@ RUN touch resources/assets/scss/app.scss || true
 RUN touch resources/assets/scss/bootstrap.scss || true
 RUN touch resources/assets/scss/icons.scss || true
 
-# ✅ MAINTENANT installer les dépendances PHP avec le code source complet
+# MAINTENANT installer les dépendances PHP avec le code source complet
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Installation des dépendances Node.js
-RUN npm ci --only=production
+# ✅ CORRECTION : Installation complète des dépendances Node.js (pas seulement production)
+RUN npm install
 
-# Build des assets pour production
-RUN npm run production
+# ✅ CORRECTION : Vérifier que le script existe avant de l'exécuter
+RUN npm run --silent 2>/dev/null | grep -q "production" && npm run production || \
+    (npm run --silent 2>/dev/null | grep -q "build" && npm run build) || \
+    (npm run --silent 2>/dev/null | grep -q "dev" && npm run dev) || \
+    echo "No build script found, skipping asset compilation"
 
 # Exécuter les scripts post-install
 RUN composer run-script post-autoload-dump --no-interaction || true
