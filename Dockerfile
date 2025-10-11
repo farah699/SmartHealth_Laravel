@@ -8,7 +8,7 @@ ENV NODE_VERSION=18
 ARG user=smarthealth
 ARG uid=1000
 
-# Installation des dépendances système (combiné avec nginx et supervisor)
+# Installation des dépendances système
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -51,50 +51,36 @@ RUN mkdir -p /home/$user/.composer && \
 # Configuration du répertoire de travail
 WORKDIR /var/www
 
-# Copier TOUT le code source AVANT les installations
+# Copier tout le code source
 COPY . .
 
-# Créer les dossiers manquants AVANT les installations
-RUN mkdir -p resources/assets/images \
-    && mkdir -p resources/assets/scss \
-    && mkdir -p resources/assets/js \
-    && mkdir -p storage/framework/cache/data \
+# Créer les dossiers nécessaires
+RUN mkdir -p storage/framework/cache/data \
     && mkdir -p storage/framework/sessions \
     && mkdir -p storage/framework/views \
     && mkdir -p storage/logs \
     && mkdir -p bootstrap/cache \
-    && mkdir -p /var/www/storage/app/public/audio \
-    && mkdir -p /var/www/storage/app/public/avatars \
-    && mkdir -p /var/www/storage/app/public/images
+    && mkdir -p storage/app/public/{audio,avatars,images} \
+    && mkdir -p resources/assets/{images,scss,js}
 
-# Créer des fichiers SCSS vides si nécessaire
-RUN touch resources/assets/scss/app.scss || true
-RUN touch resources/assets/scss/bootstrap.scss || true
-RUN touch resources/assets/scss/icons.scss || true
+# Créer des fichiers par défaut
+RUN touch resources/assets/scss/app.scss \
+    && echo '@import "~bootstrap/scss/bootstrap";' > resources/assets/scss/app.scss
 
-# MAINTENANT installer les dépendances PHP avec le code source complet
+# Installation des dépendances PHP
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# ✅ CORRECTION : Installation complète des dépendances Node.js (pas seulement production)
+# Installation des dépendances Node.js (toutes les dépendances pour le build)
 RUN npm install
 
-# ✅ CORRECTION : Vérifier que le script existe avant de l'exécuter
-RUN npm run --silent 2>/dev/null | grep -q "production" && npm run production || \
-    (npm run --silent 2>/dev/null | grep -q "build" && npm run build) || \
-    (npm run --silent 2>/dev/null | grep -q "dev" && npm run dev) || \
-    echo "No build script found, skipping asset compilation"
+# Build des assets pour production
+RUN npm run production
 
-# Exécuter les scripts post-install
-RUN composer run-script post-autoload-dump --no-interaction || true
+# Nettoyage des dépendances dev après build
+RUN npm prune --production && rm -rf node_modules/.cache
 
-# Nettoyage des dépendances de développement Node.js
-RUN npm prune --production \
-    && rm -rf node_modules/.cache
-
-# Configuration Nginx
+# Configuration Nginx et Supervisor
 COPY docker/nginx/default.conf /etc/nginx/sites-available/default
-
-# Configuration Supervisor
 COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Configuration des permissions
@@ -102,8 +88,7 @@ RUN chown -R $user:www-data /var/www \
     && chmod -R 755 /var/www/storage \
     && chmod -R 755 /var/www/bootstrap/cache \
     && chmod -R 777 /var/www/storage \
-    && chmod -R 777 /var/www/bootstrap/cache \
-    && chmod -R 777 /var/www/public/storage || true
+    && chmod -R 777 /var/www/bootstrap/cache
 
 # Configuration de santé
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
